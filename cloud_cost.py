@@ -1,32 +1,4 @@
 #!/usr/bin/env python3
-###############################################################################
-#  cloud_cost.py   (COMPLETE, runnable)
-#
-#  Python port of "Cloud Price.R" + the revision experiments.
-#  Reproduces every figure in the paper with the same matplotlib style,
-#  prints Table tab:ga and the Wilcoxon p-values, and writes scalability.png.
-#
-#  Run with:   python3 cloud_cost.py
-#  Requires:   numpy, scipy, matplotlib   (pip install numpy scipy matplotlib)
-#
-#  Figures written to ./figures/ :
-#     Job1allsettings.png/.pdf      Scenario-1 scatter (per-use) w/ markers+legend
-#     BoundrySolution.png/.pdf      boundary solutions, alpha in [0,50]
-#     Job1allsettings_pertime.png   per-time scatter
-#     distorigin1/disttime1/distprice1.png   generalized, per-use   (3 panels)
-#     distorigin2/disttime2/distprice2.png   generalized, per-time  (3 panels)
-#     scalability.png               NEW runtime figure (replaces old fig:scal img)
-#
-#  Console output:
-#     Scenario-1 optimal allocations; Table tab:ga numbers; B3 p-values; timings.
-#
-#  Notes / fixes carried over from the R revision:
-#     * per-time Min-Price selector corrected
-#     * per-time cost = sum(time * price) over all 7 tasks (no dropped terms)
-#     * all normalizations computed before use
-#     * Scenario-1 brute force fully vectorized (10^7 assignments)
-###############################################################################
-
 import os
 import time
 import numpy as np
@@ -34,12 +6,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scipy.stats import wilcoxon
-np.random.seed(1)                      # reproducibility
-OUT = "C:/Users/saeid/Desktop/Leiria Work/cloud cost/figures"
+np.random.seed(1)
+OUT = "C:/figures"
 os.makedirs(OUT, exist_ok=True)
 def P(name): return os.path.join(OUT, name)
 
-# global matplotlib style to match the paper figures
 plt.rcParams.update({
     "figure.dpi": 150,
     "savefig.dpi": 300,
@@ -48,10 +19,6 @@ plt.rcParams.update({
     "legend.framealpha": 0.9,
 })
 
-# =============================================================================
-# SHARED DATA
-# =============================================================================
-# Average task times (seconds): rows = 10 "node types", cols = 7 tasks.
 TimeI   = [44.5, 22.25, 11.125, 5.5625, 2.78125, 1.390625,
            0.927083333, 0.6953125, 0.463541667, 0.34765625]
 TimeII  = [447.5, 223.75, 111.875, 55.9375, 27.96875, 13.984375,
@@ -66,7 +33,7 @@ TimeVI  = [2.10E-02, 1.05E-02, 5.25E-03, 2.63E-03, 1.31E-03, 6.56E-04,
            4.38E-04, 3.28E-04, 2.19E-04, 1.64E-04]
 TimeVII = [1.09E-01, 5.45E-02, 2.73E-02, 1.36E-02, 6.81E-03, 3.41E-03,
            2.27E-03, 1.70E-03, 1.14E-03, 8.52E-04]
-# TimeM[type, task]  (10 x 7)
+
 TimeM = np.array([TimeI, TimeII, TimeIII, TimeIV, TimeVc, TimeVI, TimeVII]).T
 
 Pricea = np.array([0.054, 0.052, 0.208, 0.63, 1.26, 2.52, 3.78, 3.456, 7.56, 10.08])
@@ -74,8 +41,6 @@ Priceg = np.array([0.045, 0.09, 0.2208, 0.6048, 1.2096, 2.4192, 3.6288, 2.88, 7.
 
 
 def job_time_columns(Tcols):
-    """Two execution flows from the task graph: {1,2,3,6,7} and {1,2,4,5,6,7}.
-    Tcols has shape (..., 7); returns the max of the two flow times (the makespan)."""
     t1 = Tcols[..., 0] + Tcols[..., 1] + Tcols[..., 2] + Tcols[..., 5] + Tcols[..., 6]
     t2 = Tcols[..., 0] + Tcols[..., 1] + Tcols[..., 3] + Tcols[..., 4] + Tcols[..., 5] + Tcols[..., 6]
     return np.maximum(t1, t2)
@@ -154,10 +119,6 @@ plot_job1(P("Job1allsettings.pdf"))
 # PART A2 : Boundary solution, alpha in [0, 50] step 0.01
 # =============================================================================
 alphas = np.arange(0, 50.0001, 0.01)
-# The min-distance assignment for ANY alpha must lie on the lower-left Pareto
-# frontier of (price, time): both objectives are minimized, so a dominated
-# point can never beat the point that dominates it for any positive weight.
-# We reduce 10^7 -> the frontier (a handful of points), then sweep alpha on it.
 _order = np.argsort(pa1)                       # by price ascending
 _ts_sorted = tt1[_order]
 _cummin = np.minimum.accumulate(_ts_sorted)    # running min of time
@@ -285,7 +246,6 @@ def run_generalized(mode="use", m=200, ns=range(2, 12)):
 
 
 def plot_triplet(fname, ns, our, oursd, tt_, ttsd, pp, ppsd, ylab, legloc):
-    """Matches the paper: filled circles + lines + capped error bars (0.1*sd)."""
     f = 0.1
     fig, ax = plt.subplots(figsize=(5.3, 3.64))
     for y, ys, c in [(our, oursd, "black"), (tt_, ttsd, "red"), (pp, ppsd, "blue")]:
@@ -322,9 +282,6 @@ plot_triplet(P("distprice2.png"), ns, rT["OurP"], rT["OurPsd"], rT["TtimeP"], rT
 # PART B1 : NSGA-II baseline + hypervolume + timing  -> Table tab:ga
 # =============================================================================
 def nondominated_sort(F):
-    """Fast non-dominated sorting for 2 objectives (minimization).
-    Repeatedly peel off the lower-left staircase frontier; O(n log n) per front,
-    far faster than the O(n^2) pairwise method at our population sizes."""
     n = len(F)
     remaining = list(range(n))
     fronts = []
